@@ -9,7 +9,7 @@ use sqlx::{
     query_builder::Separated,
 };
 
-use crate::db;
+use anyhow::Result;
 
 pub trait InsertDB: Sized + Send + Sync {
     fn insert_into(qb: &mut QueryBuilder<Postgres>);
@@ -17,10 +17,7 @@ pub trait InsertDB: Sized + Send + Sync {
 }
 
 /// Generic insert helper
-pub async fn insert_one<T: InsertDB>(
-    item: T,
-    tx: &mut Transaction<'_, Postgres>,
-) -> Result<(), sqlx::Error> {
+pub async fn insert_one<T: InsertDB>(item: T, tx: &mut Transaction<'_, Postgres>) -> Result<()> {
     let mut qb = QueryBuilder::<Postgres>::new("");
 
     T::insert_into(&mut qb);
@@ -38,7 +35,7 @@ pub async fn insert_one<T: InsertDB>(
 pub async fn insert_many<T: InsertDB>(
     items: Vec<T>,
     tx: &mut Transaction<'_, Postgres>,
-) -> Result<(), sqlx::Error> {
+) -> Result<()> {
     if items.is_empty() {
         return Ok(());
     }
