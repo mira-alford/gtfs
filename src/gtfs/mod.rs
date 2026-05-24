@@ -4,9 +4,7 @@
 //! - Loading static gtfs data via gtfs-structures.
 //! - Loading real time gtfs data via protobufs.
 //! - Cleaning that up and verifying it.
-use std::collections::HashMap;
 
-use crate::db::queries;
 use crate::db::types::LastUpdate;
 use crate::transit_realtime::FeedMessage;
 use anyhow::Context;
@@ -15,13 +13,10 @@ use anyhow::bail;
 use chrono::DateTime;
 use chrono::FixedOffset;
 use chrono::NaiveDateTime;
-use chrono::Utc;
 use futures::future::try_join_all;
-use gtfs_structures::Gtfs;
 use gtfs_structures::RawGtfs;
 use prost::Message;
 use reqwest::{Client, header::LAST_MODIFIED};
-use sqlx::PgPool;
 use tokio::task::spawn_blocking;
 use tracing::{info, instrument};
 

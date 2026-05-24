@@ -3,11 +3,11 @@ pub mod db;
 pub mod gtfs;
 pub mod vars;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use prost::Message;
 use reqwest::Client;
 use std::time::Duration;
-use std::{env, sync::Arc};
+use std::env;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{debug, error, info};
 use tracing_subscriber::{EnvFilter, field::MakeExt};
@@ -15,9 +15,7 @@ use tracing_subscriber::{EnvFilter, field::MakeExt};
 use crate::db::queries;
 use crate::{
     db::Db,
-    gtfs::{last_modified, load_realtime_gtfs, load_static_gtfs},
-    transit_realtime::FeedMessage,
-    vars::{REALTIME_URL, STATIC_URL, realtime_urls},
+    gtfs::load_static_gtfs,
 };
 
 pub mod transit_realtime {
@@ -85,7 +83,7 @@ async fn setup_static_poll_schedule(state: State) -> Result<()> {
         .await?;
     sched.start().await?;
 
-    return Ok(());
+    Ok(())
 }
 
 async fn static_poll(state: State) -> Result<()> {

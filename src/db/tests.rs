@@ -3,16 +3,12 @@
 //! Specifically tests db queries and operations.
 //! Does not test a gtfs dataset properly.
 
-use crate::db::queries::{get_feed_last_update, insert_last_update};
 
 #[cfg(test)]
 use super::queries::{
     insert_agency, insert_calendar, insert_calendar_date, insert_feed_info, insert_route,
     insert_shape, insert_stop, insert_stop_time, insert_trip,
 };
-use super::types::*;
-use chrono::{NaiveDate, TimeDelta, Timelike, Utc};
-use sqlx::PgPool;
 use tracing_test::traced_test;
 
 #[traced_test]

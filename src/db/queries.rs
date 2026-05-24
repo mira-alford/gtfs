@@ -3,12 +3,10 @@
 //! A whole bunch of internal queries for the db.
 //! All the SQL should be in here.
 
-use std::path::Path;
 
 use super::types::*;
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, Utc};
-use itertools::Itertools;
-use sqlx::{PgConnection, PgPool, Postgres, QueryBuilder, Transaction};
+use chrono::NaiveDateTime;
+use sqlx::{PgConnection, PgPool, QueryBuilder};
 
 pub async fn insert_agency(agency: &Agency, pool: &mut PgConnection) -> Result<(), sqlx::Error> {
     sqlx::query!(

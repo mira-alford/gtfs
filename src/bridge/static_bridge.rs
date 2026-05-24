@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use crate::{
     db::{
@@ -8,17 +8,15 @@ use crate::{
     gtfs::StaticGtfs,
 };
 use anyhow::{Context, Result, anyhow};
-use chrono::{NaiveDate, NaiveDateTime};
-use futures::{Stream, StreamExt, future::try_join_all};
-use gtfs_structures::FeedInfo;
+use futures::{StreamExt, future::try_join_all};
 use rayon::prelude::*;
-use sqlx::{PgConnection, PgPool, Postgres, Transaction, postgres::types::PgInterval};
+use sqlx::postgres::types::PgInterval;
 use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
 };
-use tokio_stream::wrappers::{ReceiverStream, UnboundedReceiverStream};
-use tracing::{Instrument, debug, info, instrument};
+use tokio_stream::wrappers::ReceiverStream;
+use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct GtfsDbModel {
@@ -103,7 +101,7 @@ async fn stream_insert<T: InsertDB + Send + Sync + 'static>(
     Ok(tokio::task::spawn(async move {
         info!(%label, "Starting DB insert.");
         while let Some(item) = rx.recv().await {
-            item.insert(&mut *tx).await.unwrap();
+            item.insert(&mut tx).await.unwrap();
         }
         info!(%label, "Finished DB insert.");
     }))
@@ -112,7 +110,7 @@ async fn stream_insert<T: InsertDB + Send + Sync + 'static>(
 impl StaticGtfs {
     pub async fn insert_db(self, db: db::Db) -> Result<()> {
         async fn barrier(handles: &mut Vec<JoinHandle<()>>) -> Result<Vec<()>> {
-            Ok(try_join_all(std::mem::replace(handles, Vec::new())).await?)
+            Ok(try_join_all(std::mem::take(handles)).await?)
         }
 
         async fn bridge<U: InsertDB + 'static, T: Clone + Send + Sync + ToDB<U>>(
@@ -191,7 +189,7 @@ impl StaticGtfs {
         // update the last updated entry only after everything succeeds
         info!("Starting Static Bridge Phase 4");
         let mut tx = db.0.begin().await?;
-        self.last_update.insert(&mut *tx).await?;
+        self.last_update.insert(&mut tx).await?;
         tx.commit().await.ok();
         info!("Completed Static Bridge Phase 4");
 
