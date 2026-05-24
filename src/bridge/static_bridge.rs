@@ -3,14 +3,14 @@ use std::time::Duration;
 use crate::{
     db::{
         self,
-        types::{InsertDB, Shape},
+        types::{InsertDB, LastUpdate, Shape, insert_many, insert_one},
     },
     gtfs::StaticGtfs,
 };
 use anyhow::{Context, Result, anyhow};
 use futures::future::try_join_all;
 use rayon::prelude::*;
-use sqlx::postgres::types::PgInterval;
+use sqlx::{QueryBuilder, postgres::types::PgInterval};
 use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
@@ -31,39 +31,7 @@ pub struct GtfsDbModel {
     pub feed_info: ReceiverStream<db::types::FeedInfo>,
 }
 
-fn convert<T, U>(label: &'static str, items: Vec<T>, chunk_size: usize) -> UnboundedReceiver<U>
-where
-    T: ToDB<U> + Send + Sync + Clone + 'static,
-    U: Send + Sync + 'static,
-{
-    let (sender, receiver): (UnboundedSender<U>, UnboundedReceiver<U>) =
-        tokio::sync::mpsc::unbounded_channel();
-
-    tokio::task::spawn_blocking(move || {
-        debug!(%label, "Starting DB Conversion.");
-        items.chunks(chunk_size).for_each(|chunk| {
-            let converted: Vec<_> = chunk
-                .par_iter()
-                .filter_map(|item| item.clone().to_db().ok())
-                .collect();
-
-            for item in converted {
-                if sender.send(item).is_err() {
-                    break;
-                }
-            }
-        });
-        debug!(%label, "Finished DB Conversion.");
-    });
-
-    receiver
-}
-
-fn convert_shapes<T, U>(
-    label: &'static str,
-    items: Vec<T>,
-    chunk_size: usize,
-) -> UnboundedReceiver<Vec<U>>
+fn convert<T, U>(label: &'static str, items: Vec<T>, chunk_size: usize) -> UnboundedReceiver<Vec<U>>
 where
     T: ToDB<U> + Send + Sync + Clone + 'static,
     U: Send + Sync + 'static,
@@ -92,13 +60,13 @@ where
 async fn stream_insert<T: InsertDB + Send + Sync + 'static>(
     label: &'static str,
     db: &db::Db,
-    mut rx: UnboundedReceiver<T>,
+    mut rx: UnboundedReceiver<Vec<T>>,
 ) -> Result<JoinHandle<()>> {
     let mut tx = db.0.begin().await?;
     Ok(tokio::task::spawn(async move {
         info!(%label, "Starting DB insert.");
         while let Some(item) = rx.recv().await {
-            item.insert(&mut tx).await.unwrap();
+            insert_many(item, &mut tx);
         }
         info!(%label, "Finished DB insert.");
     }))
@@ -128,24 +96,6 @@ impl StaticGtfs {
             Ok(())
         }
 
-        async fn bridge_shapes<T: Clone + Send + Sync + ToDB<Shape>>(
-            futures: &mut Vec<JoinHandle<()>>,
-            db: &db::Db,
-            label: &'static str,
-            input: Option<Result<Vec<T>, gtfs_structures::Error>>,
-        ) -> Result<()>
-        where
-            T: Send + 'static,
-        {
-            let Some(data) = input else {
-                return Ok(());
-            };
-
-            futures.push(stream_insert(label, db, convert_shapes(label, data?, 1024)).await?);
-
-            Ok(())
-        }
-
         info!("Beginning Static Bridge");
 
         let mut futures = Vec::new();
@@ -155,7 +105,7 @@ impl StaticGtfs {
         info!("Starting Static Bridge Phase 1");
         bridge(&mut futures, &db, "agencies", Some(self.raw_gtfs.agencies)).await?;
         bridge(&mut futures, &db, "calendar", self.raw_gtfs.calendar).await?;
-        bridge_shapes(&mut futures, &db, "shapes", self.raw_gtfs.shapes).await?;
+        bridge(&mut futures, &db, "shapes", self.raw_gtfs.shapes).await?;
         bridge(&mut futures, &db, "feed_info", self.raw_gtfs.feed_info).await?;
         barrier(&mut futures).await?;
         info!("Completed Static Bridge Phase 1");
@@ -186,7 +136,7 @@ impl StaticGtfs {
         // update the last updated entry only after everything succeeds
         info!("Starting Static Bridge Phase 4");
         let mut tx = db.0.begin().await?;
-        self.last_update.insert(&mut tx).await?;
+        insert_one(self.last_update, &mut tx).await?;
         tx.commit().await.ok();
         info!("Completed Static Bridge Phase 4");
 

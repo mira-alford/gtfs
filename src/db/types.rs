@@ -1,17 +1,59 @@
 //! DB Types
 //!
 //! Types for database operations.
-//! Should directly map to the schema tables.
+//! Directly map to schema tables.
 
-use crate::db::queries::*;
 use chrono::{NaiveDate, NaiveDateTime, Timelike, Utc};
-use sqlx::{FromRow, PgConnection, postgres::types::PgInterval};
+use sqlx::{
+    FromRow, PgConnection, Postgres, QueryBuilder, Transaction, postgres::types::PgInterval,
+    query_builder::Separated,
+};
+
+use crate::db;
 
 pub trait InsertDB: Sized + Send + Sync {
-    fn insert(
-        &self,
-        pool: &mut PgConnection,
-    ) -> impl std::future::Future<Output = Result<(), sqlx::Error>> + std::marker::Send;
+    fn insert_into(qb: &mut QueryBuilder<Postgres>);
+    fn value(self, qb: &mut Separated<Postgres, &'static str>);
+}
+
+/// Generic insert helper
+pub async fn insert_one<T: InsertDB>(
+    item: T,
+    tx: &mut Transaction<'_, Postgres>,
+) -> Result<(), sqlx::Error> {
+    let mut qb = QueryBuilder::<Postgres>::new("");
+
+    T::insert_into(&mut qb);
+
+    qb.push(" VALUES (");
+    item.value(&mut qb.separated(","));
+    qb.push(")");
+
+    qb.build().execute(&mut **tx).await?;
+
+    Ok(())
+}
+
+/// Generic bulk insert helper
+pub async fn insert_many<T: InsertDB>(
+    items: Vec<T>,
+    tx: &mut Transaction<'_, Postgres>,
+) -> Result<(), sqlx::Error> {
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let mut qb = QueryBuilder::<Postgres>::new("");
+
+    T::insert_into(&mut qb);
+
+    qb.push_values(items.into_iter(), |mut b, item| {
+        item.value(&mut b);
+    });
+
+    qb.build().execute(&mut **tx).await?;
+
+    Ok(())
 }
 
 /// Representation of agency table rows
@@ -22,6 +64,23 @@ pub struct Agency {
     pub agency_timezone: String,
     pub agency_lang: Option<String>,
     pub agency_phone: Option<String>,
+}
+
+impl InsertDB for Agency {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO agency \
+            (agency_name, agency_url, agency_timezone, agency_lang, agency_phone)",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.agency_name)
+            .push_bind(self.agency_url)
+            .push_bind(self.agency_timezone)
+            .push_bind(self.agency_lang)
+            .push_bind(self.agency_phone);
+    }
 }
 
 /// Representation of stops table rows
@@ -40,6 +99,32 @@ pub struct Stop {
     pub platform_code: Option<String>,
 }
 
+impl InsertDB for Stop {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO stops (
+                stop_id, stop_code, stop_name, stop_desc,
+                stop_lat, stop_lon, zone_id, stop_url,
+                location_type, parent_station, platform_code
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.stop_id)
+            .push_bind(self.stop_code)
+            .push_bind(self.stop_name)
+            .push_bind(self.stop_desc)
+            .push_bind(self.stop_lat)
+            .push_bind(self.stop_lon)
+            .push_bind(self.zone_id)
+            .push_bind(self.stop_url)
+            .push_bind(self.location_type)
+            .push_bind(self.parent_station)
+            .push_bind(self.platform_code);
+    }
+}
+
 /// Representation of routes table rows
 #[derive(Debug, FromRow, PartialEq, Eq)]
 pub struct Route {
@@ -51,6 +136,29 @@ pub struct Route {
     pub route_url: Option<String>,
     pub route_color: Option<String>,
     pub route_text_color: Option<String>,
+}
+
+impl InsertDB for Route {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO routes (
+                route_id, route_short_name, route_long_name,
+                route_desc, route_type, route_url,
+                route_color, route_text_color
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.route_id)
+            .push_bind(self.route_short_name)
+            .push_bind(self.route_long_name)
+            .push_bind(self.route_desc)
+            .push_bind(self.route_type)
+            .push_bind(self.route_url)
+            .push_bind(self.route_color)
+            .push_bind(self.route_text_color);
+    }
 }
 
 /// Representation of trips table rows
@@ -65,6 +173,28 @@ pub struct Trip {
     pub shape_id: Option<String>,
 }
 
+impl InsertDB for Trip {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO trips (
+                route_id, service_id, trip_id,
+                trip_headsign, direction_id,
+                block_id, shape_id
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.route_id)
+            .push_bind(self.service_id)
+            .push_bind(self.trip_id)
+            .push_bind(self.trip_headsign)
+            .push_bind(self.direction_id)
+            .push_bind(self.block_id)
+            .push_bind(self.shape_id);
+    }
+}
+
 /// Representation of stop_times table rows
 #[derive(Debug, FromRow, PartialEq, Eq)]
 pub struct StopTime {
@@ -75,6 +205,28 @@ pub struct StopTime {
     pub stop_sequence: i32,
     pub pickup_type: i32,
     pub drop_off_type: i32,
+}
+
+impl InsertDB for StopTime {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO stop_times (
+                trip_id, arrival_time, departure_time,
+                stop_id, stop_sequence,
+                pickup_type, drop_off_type
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.trip_id)
+            .push_bind(self.arrival_time)
+            .push_bind(self.departure_time)
+            .push_bind(self.stop_id)
+            .push_bind(self.stop_sequence)
+            .push_bind(self.pickup_type)
+            .push_bind(self.drop_off_type);
+    }
 }
 
 /// Representation of calendar table rows
@@ -92,12 +244,54 @@ pub struct Calendar {
     pub end_date: NaiveDate,
 }
 
+impl InsertDB for Calendar {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO calendar (
+                service_id, monday, tuesday,
+                wednesday, thursday, friday,
+                saturday, sunday,
+                start_date, end_date
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.service_id)
+            .push_bind(self.monday)
+            .push_bind(self.tuesday)
+            .push_bind(self.wednesday)
+            .push_bind(self.thursday)
+            .push_bind(self.friday)
+            .push_bind(self.saturday)
+            .push_bind(self.sunday)
+            .push_bind(self.start_date)
+            .push_bind(self.end_date);
+    }
+}
+
 /// Representation of calendar_date table rows
 #[derive(Debug, FromRow, PartialEq, Eq)]
 pub struct CalendarDate {
     pub service_id: String,
     pub date: NaiveDate,
     pub exception_type: i32,
+}
+
+impl InsertDB for CalendarDate {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO calendar_dates (
+                service_id, date, exception_type
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.service_id)
+            .push_bind(self.date)
+            .push_bind(self.exception_type);
+    }
 }
 
 /// Representation of shapes table rows
@@ -109,6 +303,24 @@ pub struct Shape {
     pub shape_pt_sequence: i32,
 }
 
+impl InsertDB for Shape {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO shapes (
+                shape_id, shape_pt_lat,
+                shape_pt_lon, shape_pt_sequence
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.shape_id)
+            .push_bind(self.shape_pt_lat)
+            .push_bind(self.shape_pt_lon)
+            .push_bind(self.shape_pt_sequence);
+    }
+}
+
 /// Representation of feed_info table rows
 #[derive(Debug, FromRow, PartialEq, Eq)]
 pub struct FeedInfo {
@@ -117,6 +329,28 @@ pub struct FeedInfo {
     pub feed_lang: Option<String>,
     pub feed_start_date: Option<NaiveDate>,
     pub feed_end_date: Option<NaiveDate>,
+}
+
+impl InsertDB for FeedInfo {
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO feed_info (
+                feed_publisher_name,
+                feed_publisher_url,
+                feed_lang,
+                feed_start_date,
+                feed_end_date
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.feed_publisher_name)
+            .push_bind(self.feed_publisher_url)
+            .push_bind(self.feed_lang)
+            .push_bind(self.feed_start_date)
+            .push_bind(self.feed_end_date);
+    }
 }
 
 /// Representation of feed_last_update table rows
@@ -138,96 +372,18 @@ impl LastUpdate {
     }
 }
 
-impl InsertDB for Agency {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_agency(self, db).await
-    }
-}
-impl InsertDB for Stop {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_stop(self, db).await
-    }
-}
-impl InsertDB for Route {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_route(self, db).await
-    }
-}
-impl InsertDB for Trip {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_trip(self, db).await
-    }
-}
-impl InsertDB for StopTime {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_stop_time(self, db).await
-    }
-}
-
-impl InsertDB for Calendar {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_calendar(self, db).await
-    }
-}
-
-impl InsertDB for CalendarDate {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_calendar_date(self, db).await
-    }
-}
-
-impl InsertDB for Shape {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_shape(self, db).await
-    }
-}
-
-impl InsertDB for Vec<Shape> {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_shapes(self, db).await
-    }
-}
-
-impl InsertDB for FeedInfo {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_feed_info(self, db).await
-    }
-}
-
 impl InsertDB for LastUpdate {
-    async fn insert(&self, db: &mut PgConnection) -> Result<(), sqlx::Error> {
-        insert_last_update(self, db).await
+    fn insert_into(qb: &mut QueryBuilder<Postgres>) {
+        qb.push(
+            "INSERT INTO last_update (
+                feed_region,
+                feed_last_update
+            )",
+        );
+    }
+
+    fn value(self, qb: &mut Separated<Postgres, &'static str>) {
+        qb.push_bind(self.feed_region)
+            .push_bind(self.feed_last_update);
     }
 }
-
-// pub enum Insertable {
-//     Agency(Agency),
-//     Stop(Stop),
-//     Route(Route),
-//     Trip(Trip),
-//     StopTime(StopTime),
-//     Calendar(Calendar),
-//     CalendarDate(CalendarDate),
-//     Shape(Shape),
-//     FeedInfo(FeedInfo),
-//     LastUpdate(LastUpdate),
-// }
-
-// impl InsertDB for Insertable {
-//     async fn insert(&self, pool: &mut PgConnection) -> Result<(), sqlx::Error> {
-//         match self {
-//             Insertable::Agency(agency) => Agency::insert(agency, pool).await,
-//             Insertable::Stop(stop) => Stop::insert(stop, pool).await,
-//             Insertable::Route(route) => Route::insert(route, pool).await,
-//             Insertable::Trip(trip) => Trip::insert(trip, pool).await,
-//             Insertable::StopTime(stop_time) => StopTime::insert(stop_time, pool).await,
-//             Insertable::Calendar(calendar) => Calendar::insert(calendar, pool).await,
-//             Insertable::CalendarDate(calendar_date) => {
-//                 CalendarDate::insert(calendar_date, pool).await
-//             }
-//             Insertable::Shape(shape) => Shape::insert(shape, pool).await,
-//             Insertable::FeedInfo(feed_info) => FeedInfo::insert(feed_info, pool).await,
-//             Insertable::LastUpdate(last_update) => LastUpdate::insert(last_update, pool).await,
-//         }
-//     }
-// }

@@ -3,7 +3,6 @@
 //! A whole bunch of internal queries for the db.
 //! All the SQL should be in here.
 
-
 use super::types::*;
 use chrono::NaiveDateTime;
 use sqlx::{PgConnection, PgPool, QueryBuilder};

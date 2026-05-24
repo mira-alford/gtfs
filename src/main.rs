@@ -49,9 +49,9 @@ async fn main() -> Result<()> {
     setup_static_poll_schedule(state.clone()).await?;
 
     loop {
-        if let Err(e) = dynamic_poll().await {
-            error!(e=?e);
-        }
+        //     if let Err(e) = dynamic_poll().await {
+        //         error!(e=?e);
+        //     }
         tokio::time::sleep(Duration::from_mins(1)).await;
     }
 }
