@@ -11,13 +11,13 @@ use crate::{
 use anyhow::{Context, Result, anyhow};
 use futures::future::try_join_all;
 use rayon::prelude::*;
-use sqlx::{QueryBuilder, postgres::types::PgInterval};
+use sqlx::{Acquire, postgres::types::PgInterval};
 use tokio::{
     sync::mpsc::{UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
 };
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 #[derive(Debug)]
 pub struct GtfsDbModel {
@@ -62,25 +62,36 @@ async fn stream_insert<T: InsertDB + Send + Sync + 'static>(
     label: &'static str,
     db: &db::Db,
     mut rx: UnboundedReceiver<Vec<T>>,
-) -> Result<JoinHandle<()>> {
+) -> Result<JoinHandle<Result<()>>> {
     let mut tx = db.0.begin().await?;
     Ok(tokio::task::spawn(async move {
         info!(%label, "Starting DB insert.");
         while let Some(item) = rx.recv().await {
-            insert_many(item, &mut tx);
+            let mut sp = (&mut tx).begin().await?;
+            if let Err(e) = insert_many(item, &mut sp).await {
+                warn!(%label, "Failed to insert chunk: {e}");
+                sp.rollback().await?;
+            } else {
+                sp.commit().await?;
+            }
         }
+        tx.commit().await?;
         info!(%label, "Finished DB insert.");
+        Ok(())
     }))
 }
 
 impl StaticGtfs {
     pub async fn insert_db(self, db: db::Db) -> Result<()> {
-        async fn barrier(handles: &mut Vec<JoinHandle<()>>) -> Result<Vec<()>> {
-            Ok(try_join_all(std::mem::take(handles)).await?)
+        async fn barrier(handles: &mut Vec<JoinHandle<Result<()>>>) -> Result<()> {
+            for result in try_join_all(std::mem::take(handles)).await? {
+                result?;
+            }
+            Ok(())
         }
 
         async fn bridge<U: InsertDB + 'static, T: Clone + Send + Sync + ToDB<U>>(
-            futures: &mut Vec<JoinHandle<()>>,
+            futures: &mut Vec<JoinHandle<Result<()>>>,
             db: &db::Db,
             label: &'static str,
             input: Option<Result<Vec<T>, gtfs_structures::Error>>,
