@@ -3,7 +3,8 @@ use std::time::Duration;
 use crate::{
     db::{
         self,
-        types::{InsertDB, LastUpdate, Shape, insert_many, insert_one},
+        types::static_types::LastUpdate,
+        types::{InsertDB, insert_many, insert_one},
     },
     gtfs::StaticGtfs,
 };
@@ -20,15 +21,15 @@ use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct GtfsDbModel {
-    pub agencies: ReceiverStream<db::types::Agency>,
-    pub stops: ReceiverStream<db::types::Stop>,
-    pub routes: ReceiverStream<db::types::Route>,
-    pub trips: ReceiverStream<db::types::Trip>,
-    pub stop_times: ReceiverStream<db::types::StopTime>,
-    pub calendar: ReceiverStream<db::types::Calendar>,
-    pub calendar_dates: ReceiverStream<db::types::CalendarDate>,
-    pub shapes: ReceiverStream<db::types::Shape>,
-    pub feed_info: ReceiverStream<db::types::FeedInfo>,
+    pub agencies: ReceiverStream<db::types::static_types::Agency>,
+    pub stops: ReceiverStream<db::types::static_types::Stop>,
+    pub routes: ReceiverStream<db::types::static_types::Route>,
+    pub trips: ReceiverStream<db::types::static_types::Trip>,
+    pub stop_times: ReceiverStream<db::types::static_types::StopTime>,
+    pub calendar: ReceiverStream<db::types::static_types::Calendar>,
+    pub calendar_dates: ReceiverStream<db::types::static_types::CalendarDate>,
+    pub shapes: ReceiverStream<db::types::static_types::Shape>,
+    pub feed_info: ReceiverStream<db::types::static_types::FeedInfo>,
 }
 
 fn convert<T, U>(label: &'static str, items: Vec<T>, chunk_size: usize) -> UnboundedReceiver<Vec<U>>
@@ -220,9 +221,9 @@ impl ToDB<i32> for gtfs_structures::Exception {
     }
 }
 
-impl ToDB<db::types::Trip> for gtfs_structures::RawTrip {
-    fn to_db(self) -> Result<db::types::Trip> {
-        Ok(db::types::Trip {
+impl ToDB<db::types::static_types::Trip> for gtfs_structures::RawTrip {
+    fn to_db(self) -> Result<db::types::static_types::Trip> {
+        Ok(db::types::static_types::Trip {
             trip_id: self.id,
             service_id: self.service_id,
             route_id: self.route_id,
@@ -234,9 +235,9 @@ impl ToDB<db::types::Trip> for gtfs_structures::RawTrip {
     }
 }
 
-impl ToDB<db::types::StopTime> for gtfs_structures::RawStopTime {
-    fn to_db(self) -> Result<db::types::StopTime> {
-        Ok(db::types::StopTime {
+impl ToDB<db::types::static_types::StopTime> for gtfs_structures::RawStopTime {
+    fn to_db(self) -> Result<db::types::static_types::StopTime> {
+        Ok(db::types::static_types::StopTime {
             trip_id: self.trip_id,
             arrival_time: self.arrival_time.map(|t| t.to_db()).transpose()?,
             departure_time: self
@@ -251,9 +252,9 @@ impl ToDB<db::types::StopTime> for gtfs_structures::RawStopTime {
     }
 }
 
-impl ToDB<db::types::Agency> for gtfs_structures::Agency {
-    fn to_db(self) -> Result<db::types::Agency> {
-        Ok(db::types::Agency {
+impl ToDB<db::types::static_types::Agency> for gtfs_structures::Agency {
+    fn to_db(self) -> Result<db::types::static_types::Agency> {
+        Ok(db::types::static_types::Agency {
             agency_name: self.name,
             agency_url: self.url,
             agency_timezone: self.timezone,
@@ -263,9 +264,9 @@ impl ToDB<db::types::Agency> for gtfs_structures::Agency {
     }
 }
 
-impl ToDB<db::types::Stop> for gtfs_structures::Stop {
-    fn to_db(self) -> Result<db::types::Stop> {
-        Ok(db::types::Stop {
+impl ToDB<db::types::static_types::Stop> for gtfs_structures::Stop {
+    fn to_db(self) -> Result<db::types::static_types::Stop> {
+        Ok(db::types::static_types::Stop {
             stop_id: self.id,
             stop_code: self.code,
             stop_name: self.name,
@@ -281,9 +282,9 @@ impl ToDB<db::types::Stop> for gtfs_structures::Stop {
     }
 }
 
-impl ToDB<db::types::Route> for gtfs_structures::Route {
-    fn to_db(self) -> Result<db::types::Route> {
-        Ok(db::types::Route {
+impl ToDB<db::types::static_types::Route> for gtfs_structures::Route {
+    fn to_db(self) -> Result<db::types::static_types::Route> {
+        Ok(db::types::static_types::Route {
             route_id: self.id,
             route_short_name: self.short_name,
             route_long_name: self.long_name,
@@ -302,9 +303,9 @@ impl ToDB<db::types::Route> for gtfs_structures::Route {
     }
 }
 
-impl ToDB<db::types::Calendar> for gtfs_structures::Calendar {
-    fn to_db(self) -> Result<db::types::Calendar> {
-        Ok(db::types::Calendar {
+impl ToDB<db::types::static_types::Calendar> for gtfs_structures::Calendar {
+    fn to_db(self) -> Result<db::types::static_types::Calendar> {
+        Ok(db::types::static_types::Calendar {
             service_id: self.id,
             monday: self.monday,
             tuesday: self.tuesday,
@@ -319,9 +320,9 @@ impl ToDB<db::types::Calendar> for gtfs_structures::Calendar {
     }
 }
 
-impl ToDB<db::types::CalendarDate> for gtfs_structures::CalendarDate {
-    fn to_db(self) -> Result<db::types::CalendarDate> {
-        Ok(db::types::CalendarDate {
+impl ToDB<db::types::static_types::CalendarDate> for gtfs_structures::CalendarDate {
+    fn to_db(self) -> Result<db::types::static_types::CalendarDate> {
+        Ok(db::types::static_types::CalendarDate {
             service_id: self.service_id,
             date: self.date,
             exception_type: self.exception_type.to_db()?,
@@ -329,9 +330,9 @@ impl ToDB<db::types::CalendarDate> for gtfs_structures::CalendarDate {
     }
 }
 
-impl ToDB<db::types::Shape> for gtfs_structures::Shape {
-    fn to_db(self) -> Result<db::types::Shape> {
-        Ok(db::types::Shape {
+impl ToDB<db::types::static_types::Shape> for gtfs_structures::Shape {
+    fn to_db(self) -> Result<db::types::static_types::Shape> {
+        Ok(db::types::static_types::Shape {
             shape_id: self.id,
             shape_pt_lat: self.latitude,
             shape_pt_lon: self.longitude,
@@ -340,9 +341,9 @@ impl ToDB<db::types::Shape> for gtfs_structures::Shape {
     }
 }
 
-impl ToDB<db::types::FeedInfo> for gtfs_structures::FeedInfo {
-    fn to_db(self) -> Result<db::types::FeedInfo> {
-        Ok(db::types::FeedInfo {
+impl ToDB<db::types::static_types::FeedInfo> for gtfs_structures::FeedInfo {
+    fn to_db(self) -> Result<db::types::static_types::FeedInfo> {
+        Ok(db::types::static_types::FeedInfo {
             feed_publisher_name: self.name,
             feed_publisher_url: self.url,
             feed_lang: Some(self.lang),

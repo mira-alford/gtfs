@@ -5,7 +5,7 @@
 //! - Loading real time gtfs data via protobufs.
 //! - Cleaning that up and verifying it.
 
-use crate::db::types::LastUpdate;
+use crate::db::types::static_types::LastUpdate;
 use crate::transit_realtime::FeedMessage;
 use anyhow::Context;
 use anyhow::Result;
