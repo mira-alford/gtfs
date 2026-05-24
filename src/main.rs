@@ -6,17 +6,14 @@ pub mod vars;
 use anyhow::Result;
 use prost::Message;
 use reqwest::Client;
-use std::time::Duration;
 use std::env;
+use std::time::Duration;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use tracing::{debug, error, info};
 use tracing_subscriber::{EnvFilter, field::MakeExt};
 
 use crate::db::queries;
-use crate::{
-    db::Db,
-    gtfs::load_static_gtfs,
-};
+use crate::{db::Db, gtfs::load_static_gtfs};
 
 pub mod transit_realtime {
     include!(concat!(env!("OUT_DIR"), "/transit_realtime.rs"));

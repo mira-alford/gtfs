@@ -8,7 +8,7 @@ use crate::{
     gtfs::StaticGtfs,
 };
 use anyhow::{Context, Result, anyhow};
-use futures::{StreamExt, future::try_join_all};
+use futures::future::try_join_all;
 use rayon::prelude::*;
 use sqlx::postgres::types::PgInterval;
 use tokio::{
@@ -73,19 +73,16 @@ where
 
     tokio::task::spawn_blocking(move || {
         debug!(%label, "Starting DB Conversion.");
-        items.chunks(chunk_size).for_each(|chunk| {
+        for chunk in items.chunks(chunk_size) {
             let converted: Vec<_> = chunk
                 .par_iter()
                 .filter_map(|item| item.clone().to_db().ok())
                 .collect();
 
-            sender.send(converted);
-            // for item in converted {
-            //     if sender.send(item).is_err() {
-            //         break;
-            //     }
-            // }
-        });
+            if sender.send(converted).is_err() {
+                break;
+            }
+        }
         debug!(%label, "Finished DB Conversion.");
     });
 
